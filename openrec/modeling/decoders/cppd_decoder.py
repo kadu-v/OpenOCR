@@ -1,11 +1,10 @@
 import numpy as np
 import torch
+from openrec.modeling.common import DropPath, Identity, Mlp
+from openrec.modeling.decoders.nrtr_decoder import Embeddings
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.init import ones_, trunc_normal_, zeros_
-
-from openrec.modeling.common import DropPath, Identity, Mlp
-from openrec.modeling.decoders.nrtr_decoder import Embeddings
 
 
 class Attention(nn.Module):
@@ -33,12 +32,17 @@ class Attention(nn.Module):
     def forward(self, q, kv, key_mask=None):
         N, C = kv.shape[1:]
         QN = q.shape[1]
-        q = self.q(q).reshape([-1, QN, self.num_heads,
-                               C // self.num_heads]).transpose(1, 2)
+        q = (
+            self.q(q)
+            .reshape([-1, QN, self.num_heads, C // self.num_heads])
+            .transpose(1, 2)
+        )
         q = q * self.scale
-        k, v = self.kv(kv).reshape(
-            [-1, N, 2, self.num_heads,
-             C // self.num_heads]).permute(2, 0, 3, 1, 4)
+        k, v = (
+            self.kv(kv)
+            .reshape([-1, N, 2, self.num_heads, C // self.num_heads])
+            .permute(2, 0, 3, 1, 4)
+        )
 
         attn = q.matmul(k.transpose(2, 3))
 
@@ -69,7 +73,7 @@ class EdgeDecoderLayer(nn.Module):
         attn_drop=0.0,
         drop_path=[0.0, 0.0],
         act_layer=nn.GELU,
-        norm_layer='nn.LayerNorm',
+        norm_layer="nn.LayerNorm",
         epsilon=1e-6,
     ):
         super().__init__()
@@ -78,8 +82,7 @@ class EdgeDecoderLayer(nn.Module):
         self.scale = qk_scale or self.head_dim**-0.5
 
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
-        self.drop_path1 = DropPath(
-            drop_path[0]) if drop_path[0] > 0.0 else Identity()
+        self.drop_path1 = DropPath(drop_path[0]) if drop_path[0] > 0.0 else Identity()
         self.norm1 = eval(norm_layer)(dim, epsilon=epsilon)
         self.norm2 = eval(norm_layer)(dim, epsilon=epsilon)
 
@@ -104,15 +107,21 @@ class EdgeDecoderLayer(nn.Module):
         vN = cv.shape[1]
         p_shortcut = p
 
-        p1 = self.p(p).reshape(
-            [-1, pN, self.num_heads,
-             self.dim // self.num_heads]).transpose(1, 2)
-        cv1 = self.cv(cv).reshape(
-            [-1, vN, self.num_heads,
-             self.dim // self.num_heads]).transpose(1, 2)
-        pv1 = self.pv(pv).reshape(
-            [-1, vN, self.num_heads,
-             self.dim // self.num_heads]).transpose(1, 2)
+        p1 = (
+            self.p(p)
+            .reshape([-1, pN, self.num_heads, self.dim // self.num_heads])
+            .transpose(1, 2)
+        )
+        cv1 = (
+            self.cv(cv)
+            .reshape([-1, vN, self.num_heads, self.dim // self.num_heads])
+            .transpose(1, 2)
+        )
+        pv1 = (
+            self.pv(pv)
+            .reshape([-1, vN, self.num_heads, self.dim // self.num_heads])
+            .transpose(1, 2)
+        )
 
         edge = F.softmax(p1.matmul(pv1.transpose(2, 3)), -1)  # B h N N
 
@@ -171,20 +180,22 @@ class DecoderLayer(nn.Module):
 
 class CPPDDecoder(nn.Module):
 
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 num_layer=2,
-                 drop_path_rate=0.1,
-                 max_len=25,
-                 vis_seq=50,
-                 iters=1,
-                 pos_len=False,
-                 ch=False,
-                 rec_layer=1,
-                 num_heads=None,
-                 ds=False,
-                 **kwargs):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        num_layer=2,
+        drop_path_rate=0.1,
+        max_len=25,
+        vis_seq=50,
+        iters=1,
+        pos_len=False,
+        ch=False,
+        rec_layer=1,
+        num_heads=None,
+        ds=False,
+        **kwargs
+    ):
         super(CPPDDecoder, self).__init__()
 
         self.out_channels = out_channels  # none + 26 + 10
@@ -194,62 +205,72 @@ class CPPDDecoder(nn.Module):
         self.max_len = max_len + 1  # max_len + eos
         self.pos_len = pos_len
         self.ch = ch
-        self.char_node_embed = Embeddings(d_model=dim,
-                                          vocab=self.out_channels,
-                                          scale_embedding=True)
-        self.pos_node_embed = Embeddings(d_model=dim,
-                                         vocab=self.max_len,
-                                         scale_embedding=True)
+        self.char_node_embed = Embeddings(
+            d_model=dim, vocab=self.out_channels, scale_embedding=True
+        )
+        self.pos_node_embed = Embeddings(
+            d_model=dim, vocab=self.max_len, scale_embedding=True
+        )
         dpr = np.linspace(0, drop_path_rate, num_layer + rec_layer)
 
-        self.char_node_decoder = nn.ModuleList([
-            DecoderLayer(
-                dim=dim,
-                num_heads=dim // 32 if num_heads is None else num_heads,
-                mlp_ratio=4.0,
-                qkv_bias=True,
-                drop_path=dpr[i],
-            ) for i in range(num_layer)
-        ])
-        self.pos_node_decoder = nn.ModuleList([
-            DecoderLayer(
-                dim=dim,
-                num_heads=dim // 32 if num_heads is None else num_heads,
-                mlp_ratio=4.0,
-                qkv_bias=True,
-                drop_path=dpr[i],
-            ) for i in range(num_layer)
-        ])
+        self.char_node_decoder = nn.ModuleList(
+            [
+                DecoderLayer(
+                    dim=dim,
+                    num_heads=dim // 32 if num_heads is None else num_heads,
+                    mlp_ratio=4.0,
+                    qkv_bias=True,
+                    drop_path=dpr[i],
+                )
+                for i in range(num_layer)
+            ]
+        )
+        self.pos_node_decoder = nn.ModuleList(
+            [
+                DecoderLayer(
+                    dim=dim,
+                    num_heads=dim // 32 if num_heads is None else num_heads,
+                    mlp_ratio=4.0,
+                    qkv_bias=True,
+                    drop_path=dpr[i],
+                )
+                for i in range(num_layer)
+            ]
+        )
 
-        self.edge_decoder = nn.ModuleList([
-            DecoderLayer(
-                dim=dim,
-                num_heads=dim // 32 if num_heads is None else num_heads,
-                mlp_ratio=4.0,
-                qkv_bias=True,
-                qk_scale=1.0 if (rec_layer + i) % 2 != 0 else None,
-                drop_path=dpr[num_layer + i],
-            ) for i in range(rec_layer)
-        ])
+        self.edge_decoder = nn.ModuleList(
+            [
+                DecoderLayer(
+                    dim=dim,
+                    num_heads=dim // 32 if num_heads is None else num_heads,
+                    mlp_ratio=4.0,
+                    qkv_bias=True,
+                    qk_scale=1.0 if (rec_layer + i) % 2 != 0 else None,
+                    drop_path=dpr[num_layer + i],
+                )
+                for i in range(rec_layer)
+            ]
+        )
         self.rec_layer_num = rec_layer
         self_mask = torch.tril(
-            torch.ones([self.max_len, self.max_len], dtype=torch.float32))
+            torch.ones([self.max_len, self.max_len], dtype=torch.float32)
+        )
         self_mask = torch.where(
             self_mask > 0,
             torch.zeros_like(self_mask, dtype=torch.float32),
-            torch.full([self.max_len, self.max_len],
-                       float('-inf'),
-                       dtype=torch.float32),
+            torch.full(
+                [self.max_len, self.max_len], float("-inf"), dtype=torch.float32
+            ),
         )
         self.self_mask = self_mask.unsqueeze(0)
-        self.char_pos_embed = nn.Parameter(torch.zeros([1, self.max_len, dim],
-                                                       dtype=torch.float32),
-                                           requires_grad=True)
+        self.char_pos_embed = nn.Parameter(
+            torch.zeros([1, self.max_len, dim], dtype=torch.float32), requires_grad=True
+        )
         self.ds = ds
         if not self.ds:
-            self.vis_pos_embed = nn.Parameter(torch.zeros([1, vis_seq, dim],
-                                                          dtype=torch.float32),
-                                              requires_grad=True)
+            self.vis_pos_embed = nn.Parameter(
+                torch.zeros([1, vis_seq, dim], dtype=torch.float32), requires_grad=True
+            )
             trunc_normal_(self.vis_pos_embed, std=0.02)
         self.char_node_fc1 = nn.Linear(dim, max_len)
 
@@ -272,10 +293,7 @@ class CPPDDecoder(nn.Module):
 
     @torch.jit.ignore
     def no_weight_decay(self):
-        return {
-            'char_pos_embed', 'vis_pos_embed', 'char_node_embed',
-            'pos_node_embed'
-        }
+        return {"char_pos_embed", "vis_pos_embed", "char_node_embed", "pos_node_embed"}
 
     def forward(self, x, data=None):
         if self.training:
@@ -290,22 +308,34 @@ class CPPDDecoder(nn.Module):
             visual_feats = x
         bs = visual_feats.shape[0]
 
-        pos_node_embed = self.pos_node_embed(
-            torch.arange(self.max_len).cuda(
-                x.get_device())).unsqueeze(0) + self.char_pos_embed
+        if x.get_device() == -1:
+            pos_node_embed = (
+                self.pos_node_embed(torch.arange(self.max_len)).unsqueeze(0)
+                + self.char_pos_embed
+            )
+        else:
+            pos_node_embed = (
+                self.pos_node_embed(
+                    torch.arange(self.max_len).cuda(x.get_device())
+                ).unsqueeze(0)
+                + self.char_pos_embed
+            )
         pos_node_embed = torch.tile(pos_node_embed, [bs, 1, 1])
 
         char_vis_node_query = visual_feats
         pos_vis_node_query = torch.concat([pos_node_embed, visual_feats], 1)
 
         for char_decoder_layer, pos_decoder_layer in zip(
-                self.char_node_decoder, self.pos_node_decoder):
-            char_vis_node_query = char_decoder_layer(char_vis_node_query,
-                                                     char_vis_node_query)
+            self.char_node_decoder, self.pos_node_decoder
+        ):
+            char_vis_node_query = char_decoder_layer(
+                char_vis_node_query, char_vis_node_query
+            )
             pos_vis_node_query = pos_decoder_layer(
-                pos_vis_node_query, pos_vis_node_query[:, self.max_len:, :])
+                pos_vis_node_query, pos_vis_node_query[:, self.max_len :, :]
+            )
 
-        pos_node_query = pos_vis_node_query[:, :self.max_len, :]
+        pos_node_query = pos_vis_node_query[:, : self.max_len, :]
 
         char_vis_feats = char_vis_node_query
         # pos_vis_feats = pos_vis_node_query[:, self.max_len :, :]
@@ -318,15 +348,16 @@ class CPPDDecoder(nn.Module):
         for layer_i in range(self.rec_layer_num):
             rec_layer = self.edge_decoder[layer_i]
             if (self.rec_layer_num + layer_i) % 2 == 0:
-                pos_node_feats = rec_layer(pos_node_feats, pos_node_feats,
-                                           self.self_mask)
+                pos_node_feats = rec_layer(
+                    pos_node_feats, pos_node_feats, self.self_mask
+                )
             else:
                 pos_node_feats = rec_layer(pos_node_feats, char_vis_feats)
         edge_feats = self.edge_fc(pos_node_feats)  # B, 26, 37
 
         edge_logits = F.softmax(
-            edge_feats,
-            -1)  # * F.sigmoid(pos_node_feats1.unsqueeze(-1))  # B, 26, 37
+            edge_feats, -1
+        )  # * F.sigmoid(pos_node_feats1.unsqueeze(-1))  # B, 26, 37
 
         return edge_logits
 
@@ -340,14 +371,29 @@ class CPPDDecoder(nn.Module):
         if self.ch:
             char_node_embed = self.char_node_embed(targets[-2])
         else:
-            char_node_embed = self.char_node_embed(
-                torch.arange(self.out_channels).cuda(
-                    x.get_device())).unsqueeze(0)
+            if x.get_device() == -1:
+                char_node_embed = self.char_node_embed(
+                    torch.arange(self.out_channels)
+                ).unsqueeze(0)
+            else:
+                char_node_embed = self.char_node_embed(
+                    torch.arange(self.out_channels).cuda(x.get_device())
+                ).unsqueeze(0)
             char_node_embed = torch.tile(char_node_embed, [bs, 1, 1])
         counting_char_num = char_node_embed.shape[1]
-        pos_node_embed = self.pos_node_embed(
-            torch.arange(self.max_len).cuda(
-                x.get_device())).unsqueeze(0) + self.char_pos_embed
+
+        if x.get_device() == -1:
+            pos_node_embed = (
+                self.pos_node_embed(torch.arange(self.max_len)).unsqueeze(0)
+                + self.char_pos_embed
+            )
+        else:
+            pos_node_embed = (
+                self.pos_node_embed(
+                    torch.arange(self.max_len).cuda(x.get_device())
+                ).unsqueeze(0)
+                + self.char_pos_embed
+            )
         pos_node_embed = torch.tile(pos_node_embed, [bs, 1, 1])
 
         node_feats = []
@@ -356,26 +402,34 @@ class CPPDDecoder(nn.Module):
         pos_vis_node_query = torch.concat([pos_node_embed, visual_feats], 1)
 
         for char_decoder_layer, pos_decoder_layer in zip(
-                self.char_node_decoder, self.pos_node_decoder):
+            self.char_node_decoder, self.pos_node_decoder
+        ):
             char_vis_node_query = char_decoder_layer(
-                char_vis_node_query,
-                char_vis_node_query[:, counting_char_num:, :])
+                char_vis_node_query, char_vis_node_query[:, counting_char_num:, :]
+            )
             pos_vis_node_query = pos_decoder_layer(
-                pos_vis_node_query, pos_vis_node_query[:, self.max_len:, :])
+                pos_vis_node_query, pos_vis_node_query[:, self.max_len :, :]
+            )
 
         char_node_query = char_vis_node_query[:, :counting_char_num, :]
-        pos_node_query = pos_vis_node_query[:, :self.max_len, :]
+        pos_node_query = pos_vis_node_query[:, : self.max_len, :]
 
         char_vis_feats = char_vis_node_query[:, counting_char_num:, :]
 
         char_node_feats1 = self.char_node_fc1(char_node_query)
         pos_node_feats1 = self.pos_node_fc1(pos_node_query)
         if not self.pos_len:
-            diag_mask = torch.eye(pos_node_feats1.shape[1]).unsqueeze(0).tile(
-                [pos_node_feats1.shape[0], 1, 1])
-            pos_node_feats1 = (
-                pos_node_feats1 *
-                diag_mask.cuda(pos_node_feats1.get_device())).sum(-1)
+            diag_mask = (
+                torch.eye(pos_node_feats1.shape[1])
+                .unsqueeze(0)
+                .tile([pos_node_feats1.shape[0], 1, 1])
+            )
+            if diag_mask.get_device() == -1:
+                pos_node_feats1 = (pos_node_feats1 * diag_mask).sum(-1)
+            else:
+                pos_node_feats1 = (
+                    pos_node_feats1 * diag_mask.cuda(pos_node_feats1.get_device())
+                ).sum(-1)
 
         node_feats.append(char_node_feats1)
         node_feats.append(pos_node_feats1)
@@ -384,8 +438,9 @@ class CPPDDecoder(nn.Module):
         for layer_i in range(self.rec_layer_num):
             rec_layer = self.edge_decoder[layer_i]
             if (self.rec_layer_num + layer_i) % 2 == 0:
-                pos_node_feats = rec_layer(pos_node_feats, pos_node_feats,
-                                           self.self_mask)
+                pos_node_feats = rec_layer(
+                    pos_node_feats, pos_node_feats, self.self_mask
+                )
             else:
                 pos_node_feats = rec_layer(pos_node_feats, char_vis_feats)
         edge_feats = self.edge_fc(pos_node_feats)  # B, 26, 37
