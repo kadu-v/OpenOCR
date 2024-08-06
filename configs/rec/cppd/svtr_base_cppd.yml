@@ -1,5 +1,5 @@
 Global:
-  device: gpu
+  device: cpu
   epoch_num: 60
   log_smooth_window: 20
   print_batch_step: 10
@@ -10,14 +10,14 @@ Global:
   eval_epoch_step: [0, 1]
   cal_metric_during_train: True
   pretrained_model:
-  checkpoints:
+  checkpoints: ./output/rec/svtr_base666_cppd/best.pth
   use_tensorboard: false
-  infer_img: ../../PaddleOCR/CUTE80/test_image
+  infer_img: ../dataset/test
   # for data or label process
   character_dict_path: &character_dict_path ./tools/utils/EN_symbol_dict.txt # 96en
   # ./tools/utils/ppocr_keys_v1.txt  # ch
   max_text_length: &max_text_length 25
-  use_space_char: &use_space_char True
+  use_space_char: &use_space_char False
   save_res_path: ./output/rec/predicts_cppd.txt
   use_amp: True
 
@@ -29,7 +29,7 @@ Optimizer:
 
 LRScheduler:
   name: CosineAnnealingLR
-  warmup_epoch: 6
+  warmup_epoch: 2
 
 Architecture:
   model_type: rec
@@ -39,14 +39,14 @@ Architecture:
   Encoder:
     name: SVTRNet
     img_size: [32, 100]
-    out_char_num: 25
-    out_channels: 256
+    out_char_num: 25 # W//4 or W//8 or W/12s
+    out_channels: 192
     patch_merging: 'Conv'
-    embed_dim: [128, 256, 384]
-    depth: [6, 6, 4]
-    num_heads: [4, 8, 12]
-    mixer: ['Conv','Conv','Conv','Conv','Conv','Conv', 'Conv','Conv', 'Global','Global','Global','Global','Global','Global','Global','Global','Global','Global']
-    local_mixer: [[5, 5], [5, 5], [5, 5]]
+    embed_dim: [64, 128, 256]
+    depth: [3, 6, 3]
+    num_heads: [2, 4, 8]
+    mixer: ['Local','Local','Local','Local','Local','Local','Global','Global','Global','Global','Global','Global']
+    local_mixer: [[7, 11], [7, 11], [7, 11]]
     last_stage: False
     prenorm: True
   Decoder:
@@ -76,9 +76,9 @@ Metric:
 Train:
   dataset:
     name: SimpleDataSet
-    data_dir: ../dataset
+    data_dir: ../dataset/mini
     label_file_list:
-      - ../dataset/gt.txt
+      - ../dataset/mini/gt.txt
     transforms:
       - DecodeImage: # load image
           img_mode: BGR
@@ -103,9 +103,9 @@ Train:
 Eval:
   dataset:
     name: SimpleDataSet
-    data_dir: ../dataset
+    data_dir: ../dataset/mini
     label_file_list:
-      - ../dataset/gt.txt
+      - ../dataset/mini/gt.txt
     transforms:
       - DecodeImage: # load image
           img_mode: BGR
@@ -123,5 +123,5 @@ Eval:
   loader:
     shuffle: False
     drop_last: False
-    batch_size_per_card: 20
+    batch_size_per_card: 16
     num_workers: 1
