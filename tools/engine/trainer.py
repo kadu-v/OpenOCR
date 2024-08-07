@@ -4,6 +4,7 @@ import os
 import random
 import time
 
+import mlflow
 import numpy as np
 import torch
 from openrec.losses import build_loss
@@ -447,6 +448,18 @@ class Trainer(object):
                         )
                     best_str = f"best metric, {', '.join(['{}: {}'.format(k, v) for k, v in best_metric.items()])}"
                     self.logger.info(best_str)
+
+            ##################### MLFlow Logging for Train ####################################
+            mlflow_metric = train_stats.get()
+            mlflow.log_metric("train_acc", mlflow_metric["acc"], step=epoch)
+            mlflow.log_metric(
+                "train_norm_edit_dis", mlflow_metric["norm_edit_dis"], step=epoch
+            )
+            mlflow.log_metric("train_loss", mlflow_metric["loss"], step=epoch)
+            mlflow.log_metric("train_loss_node", mlflow_metric["loss_node"], step=epoch)
+            mlflow.log_metric("train_loss_edge", mlflow_metric["loss_edge"], step=epoch)
+            ##################### MLFlow Logging for Train ####################################
+
             if (
                 self.local_rank == 0
                 and epoch > start_eval_epoch
@@ -455,6 +468,13 @@ class Trainer(object):
                 cur_metric = self.eval()
                 cur_metric_str = f"cur metric, {', '.join(['{}: {}'.format(k, v) for k, v in cur_metric.items()])}"
                 self.logger.info(cur_metric_str)
+
+                ################### MLFlow Logging for Eval ####################################
+                mlflow.log_metric(
+                    "val_norm_edit_dis", cur_metric["norm_edit_dis"], step=epoch
+                )
+                mlflow.log_metric("val_acc", cur_metric["acc"], step=epoch)
+                ################### MLFlow Logging for Eval ####################################
 
                 # logger metric
                 if self.writer is not None:
