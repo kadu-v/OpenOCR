@@ -424,7 +424,7 @@ class CPPDDecoder(nn.Module):
                 .unsqueeze(0)
                 .tile([pos_node_feats1.shape[0], 1, 1])
             )
-            if diag_mask.get_device() == -1:
+            if diag_mask.get_device() == -1 and pos_node_feats1.get_device() == -1:
                 pos_node_feats1 = (pos_node_feats1 * diag_mask).sum(-1)
             else:
                 pos_node_feats1 = (
