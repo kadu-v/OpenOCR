@@ -251,7 +251,14 @@ class Trainer(object):
                     epoch=epoch % 20 if epoch % 20 != 0 else 20,
                 )
 
+            train_pbar = tqdm(
+                total=len(self.train_dataloader),
+                desc="train model:",
+                position=0,
+                leave=True,
+            )
             for idx, batch in enumerate(self.train_dataloader):
+
                 batch = [t.to(self.device) for t in batch]
                 self.optimizer.zero_grad()
                 train_reader_cost += time.time() - reader_start
@@ -365,6 +372,24 @@ class Trainer(object):
                 stats["lr"] = self.lr_scheduler.get_last_lr()[0]
                 train_stats.update(stats)
 
+                ##################### Update progress bar ####################################
+                #                 mlflow.log_metric("train_acc", mlflow_metric["acc"], step=epoch)
+                # mlflow.log_metric(
+                #     "train_norm_edit_dis", mlflow_metric["norm_edit_dis"], step=epoch
+                # )
+                # mlflow.log_metric("train_loss", mlflow_metric["loss"], step=epoch)
+                # mlflow.log_metric("train_loss_node", mlflow_metric["loss_node"], step=epoch)
+                # mlflow.log_metric("train_loss_edge", mlflow_metric["loss_edge"], step=epoch)
+                metric_for_pbar = train_stats.get()
+                train_pbar.update(1)
+                train_pbar.set_postfix(
+                    acc=metric_for_pbar["acc"],
+                    norm_edit_dis=metric_for_pbar["norm_edit_dis"],
+                    loss=metric_for_pbar["loss"],
+                    loss_node=metric_for_pbar["loss_node"],
+                    loss_edge=metric_for_pbar["loss_edge"],
+                )
+
                 if self.writer is not None:
                     for k, v in train_stats.get().items():
                         self.writer.add_scalar(f"TRAIN/{k}", v, global_step)
@@ -458,7 +483,9 @@ class Trainer(object):
             mlflow.log_metric("train_loss", mlflow_metric["loss"], step=epoch)
             mlflow.log_metric("train_loss_node", mlflow_metric["loss_node"], step=epoch)
             mlflow.log_metric("train_loss_edge", mlflow_metric["loss_edge"], step=epoch)
-            ##################### MLFlow Logging for Train ####################################
+
+            ##################### Update progress bar ####################################
+            train_pbar.close()
 
             if (
                 self.local_rank == 0
@@ -675,4 +702,5 @@ class Trainer(object):
             import traceback
 
             self.logger.info(traceback.format_exc())
+        self.logger.info(f"finish reader: {count}, Success!")
         self.logger.info(f"finish reader: {count}, Success!")
