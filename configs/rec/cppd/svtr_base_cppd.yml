@@ -3,7 +3,7 @@ Global:
   epoch_num: 100
   log_smooth_window: 20
   print_batch_step: 100
-  output_dir: ./output/rec/svtr_base666_cppd_u14ml/
+  output_dir: ./output/rec/svtr_base666_cppd_u14ml
   save_epoch_step: 2000
   # evaluation is run every 2000 iterations
   eval_batch_step: [0, 500]
@@ -103,7 +103,8 @@ Train:
       - DecodeImage: # load image
           img_mode: BGR
           channel_first: False
-      #   - SVTRRAug:
+    #   - SVTRRAug:
+      - PARSeqAug:
       - CPPDLabelEncode: # Class handling label
           pos_len: False
           character_dict_path: *character_dict_path
